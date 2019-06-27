@@ -1,11 +1,23 @@
-import React, { Component } from 'react';
-import { View, StyleSheet, WebView } from 'react-native';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { WebView } from 'react-native-webview';
 
 import htmlContent from './h5/html';
 import injectedSignaturePad from './h5/js/signature_pad';
 import injectedApplication from './h5/js/app';
 
 const styles = StyleSheet.create({
+  signature: {
+    width: 200,
+    height: 110,
+    borderWidth: 2,
+    borderColor: 'grey'
+  },
+  signaturBg: {
+    alignItems: 'center',
+    marginTop: 20
+  },
+  webView: {},
   webBg: {
     width: '100%',
     backgroundColor: '#FFF',
@@ -13,59 +25,76 @@ const styles = StyleSheet.create({
   }
 });
 
-class SignatureView extends Component {
-  static defaultProps = {
-    webStyle: '',
-    onOK: () => {},
-    onEmpty: () => {},
-    descriptionText: 'Sign above',
-    clearText: 'Clear',
-    confirmText: 'Confirm',
-  };
+const defaultSignatureCanvasOptions = {
+  backgroundColor: 'rgba(0,0,0,0)',
+  imageDataType: 'image/png',
+  encoderOptions: 0.92
+};
 
-  constructor(props) {
-    super(props);
-    const { descriptionText, clearText, confirmText, emptyText, webStyle } = props;
-    this.state = { 
-      base64DataUrl: props.dataURL || null 
-    };
+const SignatureView = ({
+  webStyle = '',
+  onOK = () => { },
+  onEmpty = () => { },
+  onChange = () => { },
+  onError = (error) => console.error(error),
+  descriptionText = 'Sign above',
+  clearText = 'Clear',
+  confirmText = 'Confirm',
+  signatureCanvasOptions = defaultSignatureCanvasOptions
+}, ref) => {
 
+  const messageReceived = React.useCallback((event) => {
+    const action = JSON.parse(event.nativeEvent.data);
+    switch (action.type) {
+      case 'EMPTY':
+        onEmpty();
+        break;
+      case 'ON_CHANGE':
+        onChange(action.base64DataUrl);
+        break;
+      case 'SAVE':
+        onOK(action.base64DataUrl);
+    }
+  }, [ onOK, onEmpty, onChange ]);
+
+  const source = React.useMemo(() => {
     const injectedJavaScript = injectedSignaturePad + injectedApplication;
+
     let html = htmlContent(injectedJavaScript);
     html = html.replace('<%style%>', webStyle);
     html = html.replace('<%description%>', descriptionText);
     html = html.replace('<%confirm%>', confirmText);
     html = html.replace('<%clear%>', clearText);
+    html = html.replace('<%canvasOptions%>', JSON.stringify(signatureCanvasOptions || '{}'));
 
-    this.source = { html };
-  };
+    return { html };
+  }, [ webStyle, descriptionText, confirmText, clearText, signatureCanvasOptions ]);
 
-  getSignature = e => {
-    const { onOK, onEmpty } = this.props;
-    if (e.nativeEvent.data === "EMPTY") {
-      onEmpty();
-    } else {
-      onOK(e.nativeEvent.data);
+  const webRef = React.useRef();
+
+  React.useImperativeHandle(ref, () => ({
+    clear: () => {
+      const run = `
+        signaturePad.clear();
+        true;
+      `;
+      webRef.current.injectJavaScript(run);
     }
-  };
+  }));
 
-  _renderError = args => {
-    console.log("error", args);
-  };
+  return (
+    <View style={styles.webBg}>
+      <WebView
+        ref={webRef}
+        useWebKit={true}
+        style={styles.webView}
+        source={source}
+        onMessage={messageReceived}
+        javaScriptEnabled={true}
+        onError={onError}
+      />
+    </View>
+  );
+};
 
-  render() {
-    return (
-      <View style={styles.webBg}>
-        <WebView
-          useWebKit={true}
-          source={this.source}
-          onMessage={this.getSignature}
-          javaScriptEnabled={true}
-          onError={this._renderError}
-        />
-      </View>
-    );
-  }
-}
-
-export default SignatureView;
+export default React.forwardRef(SignatureView);
