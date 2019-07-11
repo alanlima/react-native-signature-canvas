@@ -75,7 +75,9 @@ const SignatureView = ({
   React.useImperativeHandle(ref, () => ({
     clear: () => {
       const run = `
-        signaturePad.clear();
+        setTimeout(function() {
+          signaturePad.clear();
+        }, 100);
         true;
       `;
       webRef.current.injectJavaScript(run);
